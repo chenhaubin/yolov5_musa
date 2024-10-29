@@ -198,7 +198,7 @@ def create_dataloader(
         )
 
     batch_size = min(batch_size, len(dataset))
-    nd = torch.cuda.device_count()  # number of CUDA devices
+    nd = torch.cuda.device_count() if torch.cuda.is_available() else torch.musa.device_count() if torch.musa.is_available() else 0 # number of CUDA/MUSA devices
     nw = min([os.cpu_count() // max(nd, 1), batch_size if batch_size > 1 else 0, workers])  # number of workers
     sampler = None if rank == -1 else SmartDistributedSampler(dataset, shuffle=shuffle)
     loader = DataLoader if image_weights else InfiniteDataLoader  # only DataLoader allows for attribute updates

@@ -370,7 +370,7 @@ def export_onnx(model, im, file, opset, dynamic, simplify, prefix=colorstr("ONNX
     if simplify:
         try:
             cuda = torch.cuda.is_available()
-            check_requirements(("onnxruntime-gpu" if cuda else "onnxruntime", "onnxslim"))
+            check_requirements(("onnxruntime-gpu" if (cuda or musa) else "onnxruntime", "onnxslim"))
             import onnxslim
 
             LOGGER.info(f"{prefix} slimming with onnxslim {onnxslim.__version__}...")

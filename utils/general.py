@@ -48,6 +48,7 @@ from ultralytics.utils.checks import check_requirements
 from utils import TryExcept, emojis
 from utils.downloads import curl_download, gsutil_getsize
 from utils.metrics import box_iou, fitness
+from utils.torch_utils import set_seed
 
 FILE = Path(__file__).resolve()
 ROOT = FILE.parents[1]  # YOLOv5 root directory
@@ -188,14 +189,14 @@ CONFIG_DIR = user_config_dir()  # Ultralytics settings dir
 
 
 class Profile(contextlib.ContextDecorator):
-    """Context manager and decorator for profiling code execution time, with optional CUDA synchronization."""
+    """Context manager and decorator for profiling code execution time, with optional CUDA/MUSA synchronization."""
 
     def __init__(self, t=0.0, device: torch.device = None):
         """Initializes a profiling context for YOLOv5 with optional timing threshold and device specification."""
         self.t = t
         self.device = device
         self.cuda = bool(device and str(device).startswith("cuda"))
-
+        self.musa = bool(device and str(device).startswith("musa"))
     def __enter__(self):
         """Initializes timing at the start of a profiling context block for performance measurement."""
         self.start = self.time()
@@ -210,6 +211,8 @@ class Profile(contextlib.ContextDecorator):
         """Measures and returns the current time, synchronizing CUDA operations if `cuda` is True."""
         if self.cuda:
             torch.cuda.synchronize(self.device)
+        elif self.musa:
+            torch.musa.synchronize(self.device)
         return time.time()
 
 
@@ -285,9 +288,7 @@ def init_seeds(seed=0, deterministic=False):
     """
     random.seed(seed)
     np.random.seed(seed)
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)  # for Multi-GPU, exception safe
+    set_seed(seed)
     # torch.backends.cudnn.benchmark = True  # AutoBatch problem https://github.com/ultralytics/yolov5/issues/9287
     if deterministic and check_version(torch.__version__, "1.12.0"):  # https://github.com/ultralytics/yolov5/pull/8213
         torch.use_deterministic_algorithms(True)
@@ -599,7 +600,7 @@ def check_amp(model):
     prefix = colorstr("AMP: ")
     device = next(model.parameters()).device  # get model device
     if device.type in ("cpu", "mps"):
-        return False  # AMP only used on CUDA devices
+        return False  # AMP only used on CUDA/MUSA devices
     f = ROOT / "data" / "images" / "bus.jpg"  # image to check
     im = f if f.exists() else "https://ultralytics.com/images/bus.jpg" if check_online() else np.ones((640, 640, 3))
     try:

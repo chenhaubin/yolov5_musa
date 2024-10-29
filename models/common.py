@@ -20,7 +20,13 @@ import requests
 import torch
 import torch.nn as nn
 from PIL import Image
-from torch.cuda import amp
+try:
+    if torch.cuda.is_available():
+        from torch.cuda import amp
+    else:
+        from torch.musa import amp
+except ImportError:
+    raise ImportError("MUSA or CUDA amp module is not available.")
 
 # Import 'ultralytics' package or install if missing
 try:
@@ -481,7 +487,8 @@ class DetectMultiBackend(nn.Module):
         fp16 &= pt or jit or onnx or engine or triton  # FP16
         nhwc = coreml or saved_model or pb or tflite or edgetpu  # BHWC formats (vs torch BCWH)
         stride = 32  # default stride
-        cuda = torch.cuda.is_available() and device.type != "cpu"  # use CUDA
+        cuda = torch.cuda.is_available() and device.type == "cuda"  # use CUDA
+        musa = torch.musa.is_available() and device.type == "musa" # use CUDA
         if not (pt or triton):
             w = attempt_download(w)  # download if not local
 
@@ -490,7 +497,7 @@ class DetectMultiBackend(nn.Module):
             stride = max(int(model.stride.max()), 32)  # model stride
             names = model.module.names if hasattr(model, "module") else model.names  # get class names
             model.half() if fp16 else model.float()
-            self.model = model  # explicitly assign for to(), cpu(), cuda(), half()
+            self.model = model  # explicitly assign for to(), cpu(), cuda(), musa(), half()
         elif jit:  # TorchScript
             LOGGER.info(f"Loading {w} for TorchScript inference...")
             extra_files = {"config.txt": ""}  # model metadata
@@ -508,10 +515,15 @@ class DetectMultiBackend(nn.Module):
             net = cv2.dnn.readNetFromONNX(w)
         elif onnx:  # ONNX Runtime
             LOGGER.info(f"Loading {w} for ONNX Runtime inference...")
-            check_requirements(("onnx", "onnxruntime-gpu" if cuda else "onnxruntime"))
+            check_requirements(("onnx", "onnxruntime-gpu" if cuda or musa else "onnxruntime"))
             import onnxruntime
 
-            providers = ["CUDAExecutionProvider", "CPUExecutionProvider"] if cuda else ["CPUExecutionProvider"]
+            if cuda:
+                providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+            elif musa:
+                providers = ["MUSAExecutionProvider", "CPUExecutionProvider"]
+            else:
+                providers = ["CPUExecutionProvider"]
             session = onnxruntime.InferenceSession(w, providers=providers)
             output_names = [x.name for x in session.get_outputs()]
             meta = session.get_modelmeta().custom_metadata_map  # metadata
@@ -539,11 +551,14 @@ class DetectMultiBackend(nn.Module):
 
             check_version(trt.__version__, "7.0.0", hard=True)  # require tensorrt>=7.0.0
             if device.type == "cpu":
-                device = torch.device("cuda:0")
+                device = torch.device("musa:0" if device.type == "musa" else "cuda:0") 
             Binding = namedtuple("Binding", ("name", "dtype", "shape", "data", "ptr"))
             logger = trt.Logger(trt.Logger.INFO)
             with open(w, "rb") as f, trt.Runtime(logger) as runtime:
-                model = runtime.deserialize_cuda_engine(f.read())
+                if musa:
+                    model = runtime.deserialize_musa_engine(f.read())
+                else:
+                    model = runtime.deserialize_cuda_engine(f.read())
             context = model.create_execution_context()
             bindings = OrderedDict()
             output_names = []
@@ -646,14 +661,14 @@ class DetectMultiBackend(nn.Module):
             raise NotImplementedError("ERROR: YOLOv5 TF.js inference is not supported")
         elif paddle:  # PaddlePaddle
             LOGGER.info(f"Loading {w} for PaddlePaddle inference...")
-            check_requirements("paddlepaddle-gpu" if cuda else "paddlepaddle")
+            check_requirements("paddlepaddle-gpu" if cuda or musa else "paddlepaddle")
             import paddle.inference as pdi
 
             if not Path(w).is_file():  # if not *.pdmodel
                 w = next(Path(w).rglob("*.pdmodel"))  # get *.pdmodel file from *_paddle_model dir
             weights = Path(w).with_suffix(".pdiparams")
             config = pdi.Config(str(w), str(weights))
-            if cuda:
+            if cuda or musa:
                 config.enable_use_gpu(memory_pool_init_size_mb=2048, device_id=0)
             predictor = pdi.create_predictor(config)
             input_handle = predictor.get_input_handle(predictor.get_input_names()[0])
@@ -826,7 +841,7 @@ class AutoShape(nn.Module):
 
     def _apply(self, fn):
         """
-        Applies to(), cpu(), cuda(), half() etc.
+        Applies to(), cpu(), cuda(), musa(), half() etc.
 
         to model tensors excluding parameters or registered buffers.
         """

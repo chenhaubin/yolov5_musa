@@ -27,7 +27,13 @@ import torch.distributed as dist
 import torch.hub as hub
 import torch.optim.lr_scheduler as lr_scheduler
 import torchvision
-from torch.cuda import amp
+try:
+    if torch.cuda.is_available():
+        from torch.cuda import amp
+    else:
+        from torch.musa import amp
+except ImportError:
+    raise ImportError("MUSA or CUDA amp module is not available.")
 from tqdm import tqdm
 
 FILE = Path(__file__).resolve()
@@ -67,6 +73,7 @@ from utils.torch_utils import (
     smart_optimizer,
     smartCrossEntropyLoss,
     torch_distributed_zero_first,
+    init_ddp,
 )
 
 LOCAL_RANK = int(os.getenv("LOCAL_RANK", -1))  # https://pytorch.org/docs/stable/elastic/run.html
@@ -87,8 +94,15 @@ def train(opt, device):
         opt.imgsz,
         str(opt.pretrained).lower() == "true",
     )
-    cuda = device.type != "cpu"
-
+    if device.type != "cpu":
+        if device.type == "musa":
+            musa = True
+            cuda = False
+        else:
+            cuda = True
+            musa = False
+    else:
+        cuda = musa = False
     # Directories
     wdir = save_dir / "weights"
     wdir.mkdir(parents=True, exist_ok=True)  # make dir
@@ -191,14 +205,14 @@ def train(opt, device):
     ema = ModelEMA(model) if RANK in {-1, 0} else None
 
     # DDP mode
-    if cuda and RANK != -1:
+    if (cuda or musa) and RANK != -1:
         model = smart_DDP(model)
 
     # Train
     t0 = time.time()
     criterion = smartCrossEntropyLoss(label_smoothing=opt.label_smoothing)  # loss function
     best_fitness = 0.0
-    scaler = amp.GradScaler(enabled=cuda)
+    scaler = amp.GradScaler(enabled=(cuda or musa))
     val = test_dir.stem  # 'val' or 'test'
     LOGGER.info(
         f'Image sizes {imgsz} train, {imgsz} test\n'
@@ -219,7 +233,7 @@ def train(opt, device):
             images, labels = images.to(device, non_blocking=True), labels.to(device)
 
             # Forward
-            with amp.autocast(enabled=cuda):  # stability issues when enabled
+            with amp.autocast(enabled=(cuda or musa)):  # stability issues when enabled
                 loss = criterion(model(images), labels)
 
             # Backward
@@ -237,7 +251,7 @@ def train(opt, device):
             if RANK in {-1, 0}:
                 # Print
                 tloss = (tloss * i + loss.item()) / (i + 1)  # update mean losses
-                mem = "%.3gG" % (torch.cuda.memory_reserved() / 1e9 if torch.cuda.is_available() else 0)  # (GB)
+                mem = "%.3gG" % (torch.cuda.memory_reserved() / 1e9 if torch.cuda.is_available() else torch.musa.memory_reserved() / 1e9 if torch.musa.is_available() else 0)  # (GB)
                 pbar.desc = f"{f'{epoch + 1}/{epochs}':>10}{mem:>10}{tloss:>12.3g}" + " " * 36
 
                 # Test
@@ -322,7 +336,7 @@ def parse_opt(known=False):
     parser.add_argument("--imgsz", "--img", "--img-size", type=int, default=224, help="train, val image size (pixels)")
     parser.add_argument("--nosave", action="store_true", help="only save final checkpoint")
     parser.add_argument("--cache", type=str, nargs="?", const="ram", help='--cache images in "ram" (default) or "disk"')
-    parser.add_argument("--device", default="", help="cuda device, i.e. 0 or 0,1,2,3 or cpu")
+    parser.add_argument("--device", default="", help="device type (e.g., 0 or 0,1,2,3 for CUDA, 'musa' for MUSA, or 'cpu')")
     parser.add_argument("--workers", type=int, default=8, help="max dataloader workers (per RANK in DDP mode)")
     parser.add_argument("--project", default=ROOT / "runs/train-cls", help="save to project/name")
     parser.add_argument("--name", default="exp", help="save to project/name")
@@ -352,10 +366,16 @@ def main(opt):
     if LOCAL_RANK != -1:
         assert opt.batch_size != -1, "AutoBatch is coming soon for classification, please pass a valid --batch-size"
         assert opt.batch_size % WORLD_SIZE == 0, f"--batch-size {opt.batch_size} must be multiple of WORLD_SIZE"
-        assert torch.cuda.device_count() > LOCAL_RANK, "insufficient CUDA devices for DDP command"
-        torch.cuda.set_device(LOCAL_RANK)
-        device = torch.device("cuda", LOCAL_RANK)
-        dist.init_process_group(backend="nccl" if dist.is_nccl_available() else "gloo")
+        if device.type == "cuda":
+            assert torch.cuda.device_count() > LOCAL_RANK, "insufficient CUDA devices for DDP command"
+            torch.cuda.set_device(LOCAL_RANK)
+            device = torch.device("cuda", LOCAL_RANK)
+            init_ddp(backend="nccl" if dist.is_nccl_available() else "gloo")
+        elif device.type == "musa":
+            assert torch.musa.device_count() > LOCAL_RANK, "insufficient MUSA devices for DDP command"
+            torch.musa.set_device(LOCAL_RANK)
+            device = torch.device("musa", LOCAL_RANK)
+            init_ddp(backend="mccl" if dist.is_mccl_available() else "gloo")
 
     # Parameters
     opt.save_dir = increment_path(Path(opt.project) / opt.name, exist_ok=opt.exist_ok)  # increment run

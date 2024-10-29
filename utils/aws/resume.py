@@ -28,7 +28,7 @@ for last in path.rglob("*/**/last.pt"):
     # Get device count
     d = opt["device"].split(",")  # devices
     nd = len(d)  # number of devices
-    ddp = nd > 1 or (nd == 0 and torch.cuda.device_count() > 1)  # distributed data parallel
+    ddp = nd > 1 or (nd == 0 and (torch.cuda.device_count() > 1 or (torch.musa.is_available() and torch.musa.device_count() > 1)))  # distributed data parallel
 
     if ddp:  # multi-GPU
         port += 1

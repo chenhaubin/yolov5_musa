@@ -8,11 +8,12 @@ import torch
 
 from utils.general import LOGGER, colorstr
 from utils.torch_utils import profile
+from utils.torch_utils import amp_autocast
 
 
 def check_train_batch_size(model, imgsz=640, amp=True):
     """Checks and computes optimal training batch size for YOLOv5 model, given image size and AMP setting."""
-    with torch.cuda.amp.autocast(amp):
+    with amp_autocast(amp):
         return autobatch(deepcopy(model).train(), imgsz)  # compute optimal batch size
 
 
@@ -29,19 +30,26 @@ def autobatch(model, imgsz=640, fraction=0.8, batch_size=16):
     LOGGER.info(f"{prefix}Computing optimal batch size for --imgsz {imgsz}")
     device = next(model.parameters()).device  # get model device
     if device.type == "cpu":
-        LOGGER.info(f"{prefix}CUDA not detected, using default CPU batch-size {batch_size}")
+        LOGGER.info(f"{prefix}CUDA/MUSA not detected, using default CPU batch-size {batch_size}")
         return batch_size
     if torch.backends.cudnn.benchmark:
         LOGGER.info(f"{prefix} ⚠️ Requires torch.backends.cudnn.benchmark=False, using default batch-size {batch_size}")
         return batch_size
 
-    # Inspect CUDA memory
+    # Inspect CUDA/MUSA memory
     gb = 1 << 30  # bytes to GiB (1024 ** 3)
-    d = str(device).upper()  # 'CUDA:0'
-    properties = torch.cuda.get_device_properties(device)  # device properties
-    t = properties.total_memory / gb  # GiB total
-    r = torch.cuda.memory_reserved(device) / gb  # GiB reserved
-    a = torch.cuda.memory_allocated(device) / gb  # GiB allocated
+    d = str(device).upper()  # 'CUDA:0 or MUSA:0'
+    if device.type == "musa":
+        properties = torch.musa.get_device_properties(device)  # device properties
+        t = properties.total_memory / gb  # GiB total
+        r = torch.musa.memory_reserved(device) / gb  # GiB reserved
+        a = torch.musa.memory_allocated(device) / gb  # GiB allocated
+    else:
+        properties = torch.cuda.get_device_properties(device)  # device properties
+        t = properties.total_memory / gb  # GiB total
+        r = torch.cuda.memory_reserved(device) / gb  # GiB reserved
+        a = torch.cuda.memory_allocated(device) / gb  # GiB allocated
+
     f = t - (r + a)  # GiB free
     LOGGER.info(f"{prefix}{d} ({properties.name}) {t:.2f}G total, {r:.2f}G reserved, {a:.2f}G allocated, {f:.2f}G free")
 
@@ -63,7 +71,7 @@ def autobatch(model, imgsz=640, fraction=0.8, batch_size=16):
             b = batch_sizes[max(i - 1, 0)]  # select prior safe point
     if b < 1 or b > 1024:  # b outside of safe range
         b = batch_size
-        LOGGER.warning(f"{prefix}WARNING ⚠️ CUDA anomaly detected, recommend restart environment and retry command.")
+        LOGGER.warning(f"{prefix}WARNING ⚠️ CUDA/MUSA anomaly detected, recommend restart environment and retry command.")
 
     fraction = (np.polyval(p, b) + r + a) / t  # actual fraction predicted
     LOGGER.info(f"{prefix}Using batch-size {b} for {d} {t * fraction:.2f}G/{t:.2f}G ({fraction * 100:.0f}%) ✅")

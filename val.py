@@ -284,7 +284,15 @@ def run(
 
     # Configure
     model.eval()
-    cuda = device.type != "cpu"
+    if device.type != "cpu":
+        if device.type == "musa":
+            musa = True
+            cuda = False
+        else:
+            cuda = True
+            musa = False
+    else:
+        cuda = musa = False
     is_coco = isinstance(data.get("val"), str) and data["val"].endswith(f"coco{os.sep}val2017.txt")  # COCO dataset
     nc = 1 if single_cls else int(data["nc"])  # number of classes
     iouv = torch.linspace(0.5, 0.95, 10, device=device)  # iou vector for mAP@0.5:0.95
@@ -329,7 +337,7 @@ def run(
     for batch_i, (im, targets, paths, shapes) in enumerate(pbar):
         callbacks.run("on_val_batch_start")
         with dt[0]:
-            if cuda:
+            if (cuda or musa):
                 im = im.to(device, non_blocking=True)
                 targets = targets.to(device)
             im = im.half() if half else im.float()  # uint8 to fp16/32
