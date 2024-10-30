@@ -101,6 +101,8 @@ RANK = int(os.getenv("RANK", -1))
 WORLD_SIZE = int(os.getenv("WORLD_SIZE", 1))
 GIT_INFO = check_git_info()
 
+if torch.musa.is_available():
+    torch.backends.mudnn.allow_tf32 = True
 
 def train(hyp, opt, device, callbacks):
     """
@@ -231,6 +233,7 @@ def train(hyp, opt, device, callbacks):
         LOGGER.info(f"Transferred {len(csd)}/{len(model.state_dict())} items from {weights}")  # report
     else:
         model = Model(cfg, ch=3, nc=nc, anchors=hyp.get("anchors")).to(device)  # create
+    model = model.to(memory_format=torch.channels_last)
     amp = check_amp(model)  # check AMP
 
     # Freeze
@@ -279,7 +282,7 @@ def train(hyp, opt, device, callbacks):
         del ckpt, csd
 
     # DP mode
-    if (cuda or musa) and RANK == -1 and torch.cuda.device_count() > 1:
+    if (cuda or musa) and RANK == -1 and (torch.cuda.device_count() > 1 or torch.musa.device_count() > 1):
         LOGGER.warning(
             "WARNING ⚠️ DP not recommended, use torch.distributed.run for best DDP Multi-GPU results.\n"
             "See Multi-GPU Tutorial at https://docs.ultralytics.com/yolov5/tutorials/multi_gpu_training to get started."
@@ -287,7 +290,7 @@ def train(hyp, opt, device, callbacks):
         model = torch.nn.DataParallel(model)
 
     # SyncBatchNorm
-    if opt.sync_bn and cuda and RANK != -1:
+    if opt.sync_bn and (cuda or musa) and RANK != -1:
         model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model).to(device)
         LOGGER.info("Using SyncBatchNorm()")
 
@@ -547,7 +550,10 @@ def train(hyp, opt, device, callbacks):
 
         callbacks.run("on_train_end", last, best, epoch, results)
 
-    torch.cuda.empty_cache()
+    if device.type == "cuda":
+        torch.cuda.empty_cache()
+    elif device.type == "musa":
+        torch.musa.empty_cache()
     return results
 
 
@@ -595,7 +601,7 @@ def parse_opt(known=False):
     parser.add_argument("--bucket", type=str, default="", help="gsutil bucket")
     parser.add_argument("--cache", type=str, nargs="?", const="ram", help="image --cache ram/disk")
     parser.add_argument("--image-weights", action="store_true", help="use weighted image selection for training")
-    parser.add_argument("--device", default="", help="cuda device, i.e. 0 or 0,1,2,3 or cpu")
+    parser.add_argument("--device", default="", help="cuda device, i.e. 0 or 0,1,2,3 or MUSA devices (e.g., 'musa:0', 'musa:0,1,2,3') or cpu")
     parser.add_argument("--multi-scale", action="store_true", help="vary img-size +/- 50%%")
     parser.add_argument("--single-cls", action="store_true", help="train multi-class data as single-class")
     parser.add_argument("--optimizer", type=str, choices=["SGD", "Adam", "AdamW"], default="SGD", help="optimizer")
@@ -686,12 +692,17 @@ def main(opt, callbacks=Callbacks()):
         assert not opt.evolve, f"--evolve {msg}"
         assert opt.batch_size != -1, f"AutoBatch with --batch-size -1 {msg}, please pass a valid --batch-size"
         assert opt.batch_size % WORLD_SIZE == 0, f"--batch-size {opt.batch_size} must be multiple of WORLD_SIZE"
-        assert torch.cuda.device_count() > LOCAL_RANK, "insufficient CUDA devices for DDP command"
-        torch.cuda.set_device(LOCAL_RANK)
-        device = torch.device("cuda", LOCAL_RANK)
-        dist.init_process_group(
-            backend="nccl" if dist.is_nccl_available() else "gloo", timeout=timedelta(seconds=10800)
-        )
+
+        if device.type == "musa":
+            assert torch.musa.device_count() > LOCAL_RANK, "insufficient MUSA devices for DDP command"
+            torch.musa.set_device(LOCAL_RANK)
+            device = torch.device("musa", LOCAL_RANK)
+            dist.init_process_group(backend="mccl" if dist.is_mccl_available() else "gloo", timeout=timedelta(seconds=10800))
+        else:  # Default to CUDA
+            assert torch.cuda.device_count() > LOCAL_RANK, "insufficient CUDA devices for DDP command"
+            torch.cuda.set_device(LOCAL_RANK)
+            device = torch.device("cuda", LOCAL_RANK)
+            dist.init_process_group(backend="nccl" if dist.is_nccl_available() else "gloo", timeout=timedelta(seconds=10800))
 
     # Train
     if not opt.evolve:
@@ -952,7 +963,7 @@ def run(**kwargs):
         bucket (str, optional): gsutil bucket for saving checkpoints. Defaults to an empty string.
         cache (str, optional): Cache image data in 'ram' or 'disk'. Defaults to None.
         image_weights (bool, optional): Use weighted image selection for training. Defaults to False.
-        device (str, optional): CUDA device identifier, e.g., '0', '0,1,2,3', or 'cpu'. Defaults to an empty string.
+        device (str, optional): CUDA device identifier, e.g., '0', '0,1,2,3', or 'musa' for MUSA devices (e.g., 'musa:0', 'musa:0,1,2,3') or 'cpu'. Defaults to an empty string.
         multi_scale (bool, optional): Use multi-scale training, varying image size by ±50%. Defaults to False.
         single_cls (bool, optional): Train with multi-class data as single-class. Defaults to False.
         optimizer (str, optional): Optimizer type, choices are ['SGD', 'Adam', 'AdamW']. Defaults to 'SGD'.

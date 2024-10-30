@@ -548,9 +548,9 @@ def train(hyp, opt, device, callbacks):
             logger.log_images(files, "Results", epoch + 1)
             logger.log_images(sorted(save_dir.glob("val*.jpg")), "Validation", epoch + 1)
     if device.type == "cuda":
-		torch.cuda.empty_cache()
-	elif device.type == "musa":
-		torch.musa.empty_cache()
+        torch.cuda.empty_cache()
+    elif device.type == "musa":
+        torch.musa.empty_cache()
     return results
 
 

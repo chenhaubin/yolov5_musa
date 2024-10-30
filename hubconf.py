@@ -24,7 +24,7 @@ def _create(name, pretrained=True, channels=3, classes=80, autoshape=True, verbo
         classes (int, optional): Number of classes the model is expected to detect. Defaults to 80.
         autoshape (bool, optional): If True, applies the YOLOv5 .autoshape() wrapper for various input formats. Defaults to True.
         verbose (bool, optional): If True, prints detailed information during the model creation/loading process. Defaults to True.
-        device (str | torch.device | None, optional): Device to use for model parameters (e.g., 'cpu', 'cuda'). If None, selects
+        device (str | torch.device | None, optional): Device to use for model parameters (e.g., 'cpu', 'cuda', 'musa'). If None, selects
             the best available device. Defaults to None.
 
     Returns:
@@ -113,7 +113,7 @@ def custom(path="path/to/model.pt", autoshape=True, _verbose=True, device=None):
             types (default is True).
         _verbose (bool): If True, prints all informational messages to the screen; otherwise, operates silently
             (default is True).
-        device (str | torch.device | None): Device to load the model on, e.g., 'cpu', 'cuda', torch.device('cuda:0'), etc.
+        device (str | torch.device | None): Device to load the model on, e.g., 'cpu', 'cuda', 'musa', torch.device('cuda:0'), torch.device('musa:0'), etc.
             (default is None, which automatically selects the best available device).
 
     Returns:
@@ -167,7 +167,7 @@ def yolov5n(pretrained=True, channels=3, classes=80, autoshape=True, _verbose=Tr
         model = yolov5n()
 
         # Load the YOLOv5-nano model with a specific device
-        model = yolov5n(device='cuda')
+        model = yolov5n(device='cuda' if torch.cuda.is_available() else 'musa')
         ```
     """
     return _create("yolov5n", pretrained, channels, classes, autoshape, _verbose, device)
@@ -185,7 +185,7 @@ def yolov5s(pretrained=True, channels=3, classes=80, autoshape=True, _verbose=Tr
         autoshape (bool, optional): Whether to wrap the model with YOLOv5's .autoshape() for handling various input formats.
             Defaults to True.
         _verbose (bool, optional): Flag to print detailed information regarding model loading. Defaults to True.
-        device (str | torch.device | None, optional): Device to use for model computation, can be 'cpu', 'cuda', or
+        device (str | torch.device | None, optional): Device to use for model computation, can be 'cpu', 'cuda', 'musa', or
             torch.device instances. If None, automatically selects the best available device. Defaults to None.
 
     Returns:
@@ -227,7 +227,7 @@ def yolov5m(pretrained=True, channels=3, classes=80, autoshape=True, _verbose=Tr
         autoshape (bool, optional): Apply YOLOv5 .autoshape() wrapper to the model for handling various input formats.
             Default is True.
         _verbose (bool, optional): Whether to print detailed information to the screen. Default is True.
-        device (str | torch.device | None, optional): Device specification to use for model parameters (e.g., 'cpu', 'cuda').
+        device (str | torch.device | None, optional): Device specification to use for model parameters (e.g., 'cpu', 'cuda', 'musa').
             Default is None.
 
     Returns:
@@ -259,7 +259,7 @@ def yolov5l(pretrained=True, channels=3, classes=80, autoshape=True, _verbose=Tr
         classes (int): Number of model classes. Default is 80.
         autoshape (bool): Apply YOLOv5 .autoshape() wrapper to model. Default is True.
         _verbose (bool): Print all information to screen. Default is True.
-        device (str | torch.device | None): Device to use for model parameters, e.g., 'cpu', 'cuda', or a torch.device instance.
+        device (str | torch.device | None): Device to use for model parameters, e.g., 'cpu', 'cuda', 'cuda',or a torch.device instance.
             Default is None.
 
     Returns:
@@ -291,7 +291,7 @@ def yolov5x(pretrained=True, channels=3, classes=80, autoshape=True, _verbose=Tr
         autoshape (bool): If True, applies the YOLOv5 .autoshape() wrapper for handling different input formats. Defaults to
             True.
         _verbose (bool): If True, prints detailed information during model loading. Defaults to True.
-        device (str | torch.device | None): Device specification for computing the model, e.g., 'cpu', 'cuda:0', torch.device('cuda').
+        device (str | torch.device | None): Device specification for computing the model, e.g., 'cpu', 'cuda:0', torch.device('cuda'), 'musa:0', torch.device('musa').
             Defaults to None.
 
     Returns:
@@ -320,7 +320,7 @@ def yolov5n6(pretrained=True, channels=3, classes=80, autoshape=True, _verbose=T
         classes (int, optional): Number of model classes. Default is 80.
         autoshape (bool, optional): If True, applies the YOLOv5 .autoshape() wrapper to the model. Default is True.
         _verbose (bool, optional): If True, prints all information to screen. Default is True.
-        device (str | torch.device | None, optional): Device to use for model parameters. Can be 'cpu', 'cuda', or None.
+        device (str | torch.device | None, optional): Device to use for model parameters. Can be 'cpu', 'cuda', 'musa', or None.
             Default is None.
 
     Returns:
@@ -329,7 +329,7 @@ def yolov5n6(pretrained=True, channels=3, classes=80, autoshape=True, _verbose=T
     Example:
         ```python
         import torch
-        model = yolov5n6(pretrained=True, channels=3, classes=80, autoshape=True, _verbose=True, device='cuda')
+        model = yolov5n6(pretrained=True, channels=3, classes=80, autoshape=True, _verbose=True, device='cuda' if torch.cuda.is_available() else 'musa')
         ```
 
     Notes:
@@ -350,7 +350,7 @@ def yolov5s6(pretrained=True, channels=3, classes=80, autoshape=True, _verbose=T
         autoshape (bool): If True, applies YOLOv5 .autoshape() wrapper to the model, allowing for varied input formats.
             Default is True.
         _verbose (bool): If True, prints detailed information during model loading. Default is True.
-        device (str | torch.device | None): Device specification for model parameters (e.g., 'cpu', 'cuda', or torch.device).
+        device (str | torch.device | None): Device specification for model parameters (e.g., 'cpu', 'cuda', 'musa', or torch.device).
             Default is None, which selects an available device automatically.
 
     Returns:
@@ -422,7 +422,7 @@ def yolov5l6(pretrained=True, channels=3, classes=80, autoshape=True, _verbose=T
         classes (int, optional): Number of model classes. Default is 80.
         autoshape (bool, optional): If True, apply YOLOv5 .autoshape() wrapper to the model for input flexibility. Default is True.
         _verbose (bool, optional): If True, print all information to the screen. Default is True.
-        device (str | torch.device | None, optional): Device to use for model parameters, e.g., 'cpu', 'cuda', or torch.device.
+        device (str | torch.device | None, optional): Device to use for model parameters, e.g., 'cpu', 'cuda', 'musa', or torch.device.
             If None, automatically selects the best available device. Default is None.
 
     Returns:
