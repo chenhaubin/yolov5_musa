@@ -17,6 +17,13 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.parallel import DistributedDataParallel as DDP
 
+try:
+    import torch_musa  # Import MUSA if available
+    MUSA_AVAILABLE = torch.musa.is_available()
+except ImportError:
+    torch_musa = None
+    MUSA_AVAILABLE = False
+
 from utils.general import LOGGER, check_version, colorstr, file_date, git_describe
 
 LOCAL_RANK = int(os.getenv("LOCAL_RANK", -1))  # https://pytorch.org/docs/stable/elastic/run.html
@@ -102,22 +109,30 @@ def torch_distributed_zero_first(local_rank: int):
 
 
 def device_count():
-    """Returns the number of available CUDA devices; works on Linux and Windows by invoking `nvidia-smi`."""
+    """Returns the number of available CUDA/MUSA devices; works on Linux and Windows by invoking `nvidia-smi` or `mthreads-gmi`."""
     assert platform.system() in ("Linux", "Windows"), "device_count() only supported on Linux or Windows"
     try:
-        cmd = "nvidia-smi -L | wc -l" if platform.system() == "Linux" else 'nvidia-smi -L | find /c /v ""'  # Windows
-        return int(subprocess.run(cmd, shell=True, capture_output=True, check=True).stdout.decode().split()[-1])
+        if torch.cuda.is_available():
+            cmd = "nvidia-smi -L | wc -l" if platform.system() == "Linux" else 'nvidia-smi -L | find /c /v ""'  # Windows
+            return int(subprocess.run(cmd, shell=True, capture_output=True, check=True).stdout.decode().split()[-1])
+        elif torch.musa.is_available():
+            cmd = "mthreads-gmi -L | wc -l" if platform.system() == "Linux" else 'mthreads-gmi -L | find /c /v ""'  # Windows
+            return int(subprocess.run(cmd, shell=True, capture_output=True, check=True).stdout.decode().split()[-1])
+        else:
+            return 0
     except Exception:
         return 0
 
 
 def select_device(device="", batch_size=0, newline=True):
-    """Selects computing device (CPU, CUDA GPU, MPS) for YOLOv5 model deployment, logging device info."""
+    """Selects computing device (CPU, CUDA GPU, MPS, MUSA) for YOLOv5 model deployment, logging device info."""
     s = f"YOLOv5 🚀 {git_describe() or file_date()} Python-{platform.python_version()} torch-{torch.__version__} "
     device = str(device).strip().lower().replace("cuda:", "").replace("none", "")  # to string, 'cuda:0' to '0'
     cpu = device == "cpu"
     mps = device == "mps"  # Apple Metal Performance Shaders (MPS)
-    if cpu or mps:
+    musa = device == 'musa' and MUSA_AVAILABLE  # MUSA (Meta-computing Unified System Architecture) is a computing platform developed by the GPU manufacturer Moore Threads.
+    
+    if cpu or mps or musa:
         os.environ["CUDA_VISIBLE_DEVICES"] = "-1"  # force torch.cuda.is_available() = False
     elif device:  # non-cpu device requested
         os.environ["CUDA_VISIBLE_DEVICES"] = device  # set environment variable - must be before assert is_available()
@@ -125,16 +140,27 @@ def select_device(device="", batch_size=0, newline=True):
             device.replace(",", "")
         ), f"Invalid CUDA '--device {device}' requested, use '--device cpu' or pass valid CUDA device(s)"
 
-    if not cpu and not mps and torch.cuda.is_available():  # prefer GPU if available
-        devices = device.split(",") if device else "0"  # range(torch.cuda.device_count())  # i.e. 0,1,6,7
-        n = len(devices)  # device count
-        if n > 1 and batch_size > 0:  # check batch_size is divisible by device_count
-            assert batch_size % n == 0, f"batch-size {batch_size} not multiple of GPU count {n}"
-        space = " " * (len(s) + 1)
-        for i, d in enumerate(devices):
-            p = torch.cuda.get_device_properties(i)
-            s += f"{'' if i == 0 else space}CUDA:{d} ({p.name}, {p.total_memory / (1 << 20):.0f}MiB)\n"  # bytes to MB
-        arg = "cuda:0"
+    if not cpu and not mps and (torch.cuda.is_available() or (musa and torch.musa.is_available())):  # prefer GPU or MUSA if available
+        if torch.cuda.is_available():
+            devices = device.split(",") if device else "0"  # range(torch.cuda.device_count())  # i.e. 0,1,6,7
+            n = len(devices)  # device count
+            if n > 1 and batch_size > 0:  # check batch_size is divisible by device_count
+                assert batch_size % n == 0, f"batch-size {batch_size} not multiple of GPU count {n}"
+            space = " " * (len(s) + 1)
+            for i, d in enumerate(devices):
+                p = torch.cuda.get_device_properties(i)
+                s += f"{'' if i == 0 else space}CUDA:{d} ({p.name}, {p.total_memory / (1 << 20):.0f}MiB)\n"  # bytes to MB
+            arg = "cuda:0"
+        elif musa and torch.musa.is_available():
+            devices = device.split(",") if device else "0"  # range(torch.musa.device_count())  # i.e. 0,1,6,7
+            n = len(devices)  # device count
+            if n > 1 and batch_size > 0:  # check batch_size is divisible by device_count
+                assert batch_size % n == 0, f"batch-size {batch_size} not multiple of MUSA device count {n}"
+            space = " " * (len(s) + 1)
+            for i, d in enumerate(devices):
+                p = torch.musa.get_device_properties(i)
+                s += f"{'' if i == 0 else space}MUSA:{d} ({p.name}, {p.total_memory / (1 << 20):.0f}MiB)\n"  # bytes to MB
+            arg = "musa:0"
     elif mps and getattr(torch, "has_mps", False) and torch.backends.mps.is_available():  # prefer MPS if available
         s += "MPS\n"
         arg = "mps"
@@ -148,10 +174,51 @@ def select_device(device="", batch_size=0, newline=True):
     return torch.device(arg)
 
 
+def init_ddp(backend='nccl'):
+    """
+    Initializes the DDP communication backend.
+    """
+    if MUSA_AVAILABLE:
+        dist.init_process_group(backend="mccl" if MUSA_AVAILABLE else "gloo")
+    else:
+        dist.init_process_group(backend="nccl" if dist.is_nccl_available() else "gloo")
+
+def amp_autocast(amp):
+    """
+    Uses autocast for mixed precision based on available devices.
+    """
+    if MUSA_AVAILABLE:
+        return torch.musa.amp.autocast(enabled=amp)
+    else:
+        return torch.cuda.amp.autocast(enabled=amp)
+
+def grad_scaler(amp):
+    """
+    Returns GradScaler based on the available device.
+    """
+    if MUSA_AVAILABLE:
+        return torch.musa.amp.GradScaler(enabled=amp)
+    else:
+        return torch.cuda.amp.GradScaler(enabled=amp)
+
+def set_seed(seed):
+    """
+    Sets the random seed for reproducibility.
+    """
+    torch.manual_seed(seed)
+    if MUSA_AVAILABLE:
+        torch.musa.manual_seed(seed)
+        torch.musa.manual_seed_all(seed)
+    elif torch.cuda.is_available():
+        torch.cuda.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)
+
 def time_sync():
     """Synchronizes PyTorch for accurate timing, leveraging CUDA if available, and returns the current time."""
     if torch.cuda.is_available():
         torch.cuda.synchronize()
+    elif torch.musa.is_available():
+        torch.musa.synchronize()
     return time.time()
 
 
@@ -196,7 +263,7 @@ def profile(input, ops, n=10, device=None):
                         t[2] = float("nan")
                     tf += (t[1] - t[0]) * 1000 / n  # ms per op forward
                     tb += (t[2] - t[1]) * 1000 / n  # ms per op backward
-                mem = torch.cuda.memory_reserved() / 1e9 if torch.cuda.is_available() else 0  # (GB)
+                mem = torch.cuda.memory_reserved() / 1e9 if torch.cuda.is_available() else torch.musa.memory_reserved() / 1e9 if torch.musa.is_available() else 0  # (GB)
                 s_in, s_out = (tuple(x.shape) if isinstance(x, torch.Tensor) else "list" for x in (x, y))  # shapes
                 p = sum(x.numel() for x in m.parameters()) if isinstance(m, nn.Module) else 0  # parameters
                 print(f"{p:12}{flops:12.4g}{mem:>14.3f}{tf:14.4g}{tb:14.4g}{str(s_in):>24s}{str(s_out):>24s}")
@@ -204,7 +271,10 @@ def profile(input, ops, n=10, device=None):
             except Exception as e:
                 print(e)
                 results.append(None)
-            torch.cuda.empty_cache()
+            if device.type == "musa":
+                torch.musa.empty_cache()
+            elif device.type == "cuda":
+                torch.cuda.empty_cache()
     return results
 
 
@@ -282,7 +352,11 @@ def fuse_conv_and_bn(conv, bn):
     )
 
     # Prepare filters
-    w_conv = conv.weight.clone().view(conv.out_channels, -1)
+    
+    if torch.musa.is_available():
+        w_conv = conv.weight.clone().reshape(conv.out_channels, -1)
+    elif torch.cuda.is_available():
+        w_conv = conv.weight.clone().view(conv.out_channels, -1)
     w_bn = torch.diag(bn.weight.div(torch.sqrt(bn.eps + bn.running_var)))
     fusedconv.weight.copy_(torch.mm(w_bn, w_conv).view(fusedconv.weight.shape))
 

@@ -370,7 +370,8 @@ def export_onnx(model, im, file, opset, dynamic, simplify, prefix=colorstr("ONNX
     if simplify:
         try:
             cuda = torch.cuda.is_available()
-            check_requirements(("onnxruntime-gpu" if cuda else "onnxruntime", "onnxslim"))
+            musa = torch.musa.is_available()
+            check_requirements(("onnxruntime-gpu" if (cuda or musa) else "onnxruntime", "onnxslim"))
             import onnxslim
 
             LOGGER.info(f"{prefix} slimming with onnxslim {onnxslim.__version__}...")
@@ -620,9 +621,11 @@ def export_engine(model, im, file, half, dynamic, simplify, workspace=4, verbose
         from ultralytics import YOLOv5
         import torch
         from pathlib import Path
-
+		
+		# Define the device, e.g., 'cuda' for CUDA or 'musa' for MUSA
+		device = torch.device('cuda' if torch.cuda.is_available() else 'musa')
         model = YOLOv5('yolov5s.pt')  # Load a pre-trained YOLOv5 model
-        input_tensor = torch.randn(1, 3, 640, 640).cuda()  # example input tensor on GPU
+        input_tensor = torch.randn(1, 3, 640, 640).(device)  # example input tensor on GPU
         export_path = Path('yolov5s.engine')  # export destination
 
         export_engine(model.model, input_tensor, export_path, half=True, dynamic=True, simplify=True, workspace=8, verbose=True)
@@ -744,7 +747,7 @@ def export_saved_model(
     try:
         import tensorflow as tf
     except Exception:
-        check_requirements(f"tensorflow{'' if torch.cuda.is_available() else '-macos' if MACOS else '-cpu'}<=2.15.1")
+        check_requirements(f"tensorflow{'' if (torch.cuda.is_available() or torch.musa.is_available()) else '-macos' if MACOS else '-cpu'}<=2.15.1")
 
         import tensorflow as tf
     from tensorflow.python.framework.convert_to_constants import convert_variables_to_constants_v2
@@ -1268,7 +1271,7 @@ def run(
     weights=ROOT / "yolov5s.pt",  # weights path
     imgsz=(640, 640),  # image (height, width)
     batch_size=1,  # batch size
-    device="cpu",  # cuda device, i.e. 0 or 0,1,2,3 or cpu
+    device="cpu",  # cuda device, i.e. 0 or 0,1,2,3 or 'musa' for MUSA devices (e.g., 'musa:0', 'musa:0,1,2,3') or cpu
     include=("torchscript", "onnx"),  # include formats
     half=False,  # FP16 half-precision export
     inplace=False,  # set YOLOv5 Detect() inplace=True
@@ -1373,7 +1376,7 @@ def run(
     # Checks
     imgsz *= 2 if len(imgsz) == 1 else 1  # expand
     if optimize:
-        assert device.type == "cpu", "--optimize not compatible with cuda devices, i.e. use --device cpu"
+        assert device.type == "cpu", "--optimize not compatible with cuda/musa devices, i.e. use --device cpu"
 
     # Input
     gs = int(max(model.stride))  # grid size (max stride)
@@ -1489,7 +1492,7 @@ def parse_opt(known=False):
     parser.add_argument("--weights", nargs="+", type=str, default=ROOT / "yolov5s.pt", help="model.pt path(s)")
     parser.add_argument("--imgsz", "--img", "--img-size", nargs="+", type=int, default=[640, 640], help="image (h, w)")
     parser.add_argument("--batch-size", type=int, default=1, help="batch size")
-    parser.add_argument("--device", default="cpu", help="cuda device, i.e. 0 or 0,1,2,3 or cpu")
+    parser.add_argument("--device", default="cpu", help="cuda device, i.e. 0 or 0,1,2,3 or 'musa' for MUSA devices (e.g., 'musa:0', 'musa:0,1,2,3') or cpu")
     parser.add_argument("--half", action="store_true", help="FP16 half-precision export")
     parser.add_argument("--inplace", action="store_true", help="set YOLOv5 Detect() inplace=True")
     parser.add_argument("--keras", action="store_true", help="TF: use Keras")

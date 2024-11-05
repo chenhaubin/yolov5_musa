@@ -75,7 +75,7 @@ def run(
     conf_thres=0.25,  # confidence threshold
     iou_thres=0.45,  # NMS IOU threshold
     max_det=1000,  # maximum detections per image
-    device="",  # cuda device, i.e. 0 or 0,1,2,3 or cpu
+    device="",  # cuda device, i.e. 0 or 0,1,2,3 or 'musa' for MUSA devices (e.g., 'musa:0', 'musa:0,1,2,3') or cpu
     view_img=False,  # show results
     save_txt=False,  # save results to *.txt
     save_format=0,  # save boxes coordinates in YOLO format or Pascal-VOC format (0 for YOLO and 1 for Pascal-VOC)
@@ -110,7 +110,7 @@ def run(
         conf_thres (float): Confidence threshold for detections. Default is 0.25.
         iou_thres (float): Intersection Over Union (IOU) threshold for non-max suppression. Default is 0.45.
         max_det (int): Maximum number of detections per image. Default is 1000.
-        device (str): CUDA device identifier (e.g., '0' or '0,1,2,3') or 'cpu'. Default is an empty string, which uses the
+        device (str): CUDA device identifier (e.g., '0' or '0,1,2,3') or 'musa' for MUSA devices (e.g., 'musa:0', 'musa:0,1,2,3') or 'cpu'. Default is an empty string, which uses the
             best available device.
         view_img (bool): If True, display inference results using OpenCV. Default is False.
         save_txt (bool): If True, save results in a text file. Default is False.
@@ -332,7 +332,7 @@ def parse_opt():
         --conf-thres (float, optional): Confidence threshold. Defaults to 0.25.
         --iou-thres (float, optional): NMS IoU threshold. Defaults to 0.45.
         --max-det (int, optional): Maximum number of detections per image. Defaults to 1000.
-        --device (str, optional): CUDA device, i.e., '0' or '0,1,2,3' or 'cpu'. Defaults to "".
+        --device (str, optional): CUDA device, i.e., '0' or '0,1,2,3' or 'musa' for MUSA devices (e.g., 'musa:0', 'musa:0,1,2,3') or 'cpu'. Defaults to "".
         --view-img (bool, optional): Flag to display results. Defaults to False.
         --save-txt (bool, optional): Flag to save results to *.txt files. Defaults to False.
         --save-csv (bool, optional): Flag to save results in CSV format. Defaults to False.
@@ -372,7 +372,7 @@ def parse_opt():
     parser.add_argument("--conf-thres", type=float, default=0.25, help="confidence threshold")
     parser.add_argument("--iou-thres", type=float, default=0.45, help="NMS IoU threshold")
     parser.add_argument("--max-det", type=int, default=1000, help="maximum detections per image")
-    parser.add_argument("--device", default="", help="cuda device, i.e. 0 or 0,1,2,3 or cpu")
+    parser.add_argument("--device", default="", help="cuda device, i.e. 0 or 0,1,2,3 or 'musa' for MUSA devices (e.g., 'musa:0', 'musa:0,1,2,3') or cpu")
     parser.add_argument("--view-img", action="store_true", help="show results")
     parser.add_argument("--save-txt", action="store_true", help="save results to *.txt")
     parser.add_argument(

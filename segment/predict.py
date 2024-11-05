@@ -75,7 +75,7 @@ def run(
     conf_thres=0.25,  # confidence threshold
     iou_thres=0.45,  # NMS IOU threshold
     max_det=1000,  # maximum detections per image
-    device="",  # cuda device, i.e. 0 or 0,1,2,3 or cpu
+    device="",  # device type (e.g., 0 or 0,1,2,3 for CUDA, 'musa' for MUSA, or 'cpu')
     view_img=False,  # show results
     save_txt=False,  # save results to *.txt
     save_conf=False,  # save confidences in --save-txt labels
@@ -269,7 +269,7 @@ def parse_opt():
     parser.add_argument("--conf-thres", type=float, default=0.25, help="confidence threshold")
     parser.add_argument("--iou-thres", type=float, default=0.45, help="NMS IoU threshold")
     parser.add_argument("--max-det", type=int, default=1000, help="maximum detections per image")
-    parser.add_argument("--device", default="", help="cuda device, i.e. 0 or 0,1,2,3 or cpu")
+    parser.add_argument("--device", default="", help="device type (e.g., 0 or 0,1,2,3 for CUDA, 'musa' for MUSA, or 'cpu')")
     parser.add_argument("--view-img", action="store_true", help="show results")
     parser.add_argument("--save-txt", action="store_true", help="save results to *.txt")
     parser.add_argument("--save-conf", action="store_true", help="save confidences in --save-txt labels")

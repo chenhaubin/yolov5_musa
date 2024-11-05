@@ -161,7 +161,7 @@ def run(
     iou_thres=0.6,  # NMS IoU threshold
     max_det=300,  # maximum detections per image
     task="val",  # train, val, test, speed or study
-    device="",  # cuda device, i.e. 0 or 0,1,2,3 or cpu
+    device="",  # device type (e.g., 0 or 0,1,2,3 for CUDA, 'musa' for MUSA, or 'cpu')
     workers=8,  # max dataloader workers (per RANK in DDP mode)
     single_cls=False,  # treat as single-class dataset
     augment=False,  # augmented inference
@@ -197,7 +197,7 @@ def run(
     training = model is not None
     if training:  # called by train.py
         device, pt, jit, engine = next(model.parameters()).device, True, False, False  # get model device, PyTorch model
-        half &= device.type != "cpu"  # half precision only supported on CUDA
+        half &= device.type != "cpu"  # half precision only supported on CUDA or MUSA
         model.half() if half else model.float()
         nm = de_parallel(model).model[-1].nm  # number of masks
     else:  # called directly
@@ -211,7 +211,7 @@ def run(
         model = DetectMultiBackend(weights, device=device, dnn=dnn, data=data, fp16=half)
         stride, pt, jit, engine = model.stride, model.pt, model.jit, model.engine
         imgsz = check_img_size(imgsz, s=stride)  # check image size
-        half = model.fp16  # FP16 supported on limited backends with CUDA
+        half = model.fp16  # FP16 supported on limited backends with CUDA or MUSA
         nm = de_parallel(model).model.model[-1].nm if isinstance(model, SegmentationModel) else 32  # number of masks
         if engine:
             batch_size = model.batch_size
@@ -226,7 +226,15 @@ def run(
 
     # Configure
     model.eval()
-    cuda = device.type != "cpu"
+    if device.type != "cpu":
+        if device.type == "musa":
+            musa = True
+            cuda = False
+        else:
+            cuda = True
+            musa = False
+    else:
+        cuda = musa = False
     is_coco = isinstance(data.get("val"), str) and data["val"].endswith(f"coco{os.sep}val2017.txt")  # COCO dataset
     nc = 1 if single_cls else int(data["nc"])  # number of classes
     iouv = torch.linspace(0.5, 0.95, 10, device=device)  # iou vector for mAP@0.5:0.95
@@ -285,7 +293,7 @@ def run(
     for batch_i, (im, targets, paths, shapes, masks) in enumerate(pbar):
         # callbacks.run('on_val_batch_start')
         with dt[0]:
-            if cuda:
+            if (cuda or musa):
                 im = im.to(device, non_blocking=True)
                 targets = targets.to(device)
                 masks = masks.to(device)
@@ -459,7 +467,7 @@ def parse_opt():
     parser.add_argument("--iou-thres", type=float, default=0.6, help="NMS IoU threshold")
     parser.add_argument("--max-det", type=int, default=300, help="maximum detections per image")
     parser.add_argument("--task", default="val", help="train, val, test, speed or study")
-    parser.add_argument("--device", default="", help="cuda device, i.e. 0 or 0,1,2,3 or cpu")
+    parser.add_argument("--device", default="", help="device type (e.g., 0 or 0,1,2,3 for CUDA, 'musa' for MUSA, or 'cpu')")
     parser.add_argument("--workers", type=int, default=8, help="max dataloader workers (per RANK in DDP mode)")
     parser.add_argument("--single-cls", action="store_true", help="treat as single-class dataset")
     parser.add_argument("--augment", action="store_true", help="augmented inference")
@@ -494,7 +502,7 @@ def main(opt):
 
     else:
         weights = opt.weights if isinstance(opt.weights, list) else [opt.weights]
-        opt.half = torch.cuda.is_available() and opt.device != "cpu"  # FP16 for fastest results
+        opt.half = (torch.cuda.is_available() or torch.musa.is_available()) and opt.device != "cpu"  # FP16 for fastest results
         if opt.task == "speed":  # speed benchmarks
             # python val.py --task speed --data coco.yaml --batch 1 --weights yolov5n.pt yolov5s.pt...
             opt.conf_thres, opt.iou_thres, opt.save_json = 0.25, 0.45, False

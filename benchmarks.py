@@ -54,7 +54,7 @@ def run(
     imgsz=640,  # inference size (pixels)
     batch_size=1,  # batch size
     data=ROOT / "data/coco128.yaml",  # dataset.yaml path
-    device="",  # cuda device, i.e. 0 or 0,1,2,3 or cpu
+    device="",  # device type (e.g., 0 or 0,1,2,3 for CUDA,  'musa' for MUSA devices (e.g., 'musa:0', 'musa:0,1,2,3'), or 'cpu')
     half=False,  # use FP16 half-precision inference
     test=False,  # test exports only
     pt_only=False,  # test PyTorch only
@@ -68,7 +68,7 @@ def run(
         imgsz (int): Inference size in pixels (default: 640).
         batch_size (int): Batch size for inference (default: 1).
         data (Path | str): Path to the dataset.yaml file (default: ROOT / "data/coco128.yaml").
-        device (str): CUDA device, e.g., '0' or '0,1,2,3' or 'cpu' (default: "").
+        device (str): device type (e.g., 0 or 0,1,2,3 for CUDA,  'musa' for MUSA devices (e.g., 'musa:0', 'musa:0,1,2,3'), or 'cpu').
         half (bool): Use FP16 half-precision inference (default: False).
         test (bool): Test export formats only (default: False).
         pt_only (bool): Test PyTorch format only (default: False).
@@ -106,7 +106,9 @@ def run(
             if "cpu" in device.type:
                 assert cpu, "inference not supported on CPU"
             if "cuda" in device.type:
-                assert gpu, "inference not supported on GPU"
+                assert gpu, "inference not supported on CUDA GPU"
+            elif "musa" in device.type:
+                assert gpu, "inference not supported on MUSA GPU"
 
             # Export
             if f == "-":
@@ -154,7 +156,7 @@ def test(
     imgsz=640,  # inference size (pixels)
     batch_size=1,  # batch size
     data=ROOT / "data/coco128.yaml",  # dataset.yaml path
-    device="",  # cuda device, i.e. 0 or 0,1,2,3 or cpu
+    device="",  # device type (e.g., 0 or 0,1,2,3 for CUDA, 'musa' for MUSA devices (e.g., 'musa:0', 'musa:0,1,2,3'), or 'cpu')
     half=False,  # use FP16 half-precision inference
     test=False,  # test exports only
     pt_only=False,  # test PyTorch only
@@ -168,7 +170,7 @@ def test(
         imgsz (int): Inference image size (in pixels). Default is 640.
         batch_size (int): Batch size for testing. Default is 1.
         data (Path | str): Path to the dataset configuration file (.yaml format). Default is 'ROOT / "data/coco128.yaml"'.
-        device (str): Device for running the tests, can be 'cpu' or a specific CUDA device ('0', '0,1,2,3', etc.). Default is an empty string.
+        device (str): Device for running tests, can be 'cpu', specific CUDA devices ('0', '0,1,2,3', etc.), or MUSA devices (e.g., 'musa:0', 'musa:0,1,2,3').
         half (bool): Use FP16 half-precision for inference if True. Default is False.
         test (bool): Test export formats only without running inference. Default is False.
         pt_only (bool): Test only the PyTorch model if True. Default is False.
@@ -227,7 +229,7 @@ def parse_opt():
         imgsz (int): Inference size in pixels. Defaults to 640.
         batch_size (int): Batch size. Defaults to 1.
         data (str): Path to the dataset YAML file. Defaults to 'ROOT / "data/coco128.yaml"'.
-        device (str): CUDA device, e.g., '0' or '0,1,2,3' or 'cpu'. Defaults to an empty string (auto-select).
+        device (str): CUDA device, e.g., '0' or '0,1,2,3' or MUSA devices (e.g., 'musa:0', 'musa:0,1,2,3') or 'cpu'. Defaults to an empty string (auto-select).
         half (bool): Use FP16 half-precision inference. This is a flag and defaults to False.
         test (bool): Test exports only. This is a flag and defaults to False.
         pt_only (bool): Test PyTorch only. This is a flag and defaults to False.
@@ -246,7 +248,7 @@ def parse_opt():
     parser.add_argument("--imgsz", "--img", "--img-size", type=int, default=640, help="inference size (pixels)")
     parser.add_argument("--batch-size", type=int, default=1, help="batch size")
     parser.add_argument("--data", type=str, default=ROOT / "data/coco128.yaml", help="dataset.yaml path")
-    parser.add_argument("--device", default="", help="cuda device, i.e. 0 or 0,1,2,3 or cpu")
+    parser.add_argument("--device", default="", help="cuda device, i.e. 0 or 0,1,2,3 or MUSA devices (e.g., 'musa:0', 'musa:0,1,2,3') or cpu")
     parser.add_argument("--half", action="store_true", help="use FP16 half-precision inference")
     parser.add_argument("--test", action="store_true", help="test exports only")
     parser.add_argument("--pt-only", action="store_true", help="test PyTorch only")
