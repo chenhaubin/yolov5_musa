@@ -7,7 +7,6 @@ import random
 import cv2
 import numpy as np
 import torch
-import torch_musa
 from torch.utils.data import DataLoader
 
 from ..augmentations import augment_hsv, copy_paste, letterbox

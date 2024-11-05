@@ -18,7 +18,6 @@ import numpy as np
 import pandas as pd
 import requests
 import torch
-import torch_musa
 import torch.nn as nn
 from PIL import Image
 try:

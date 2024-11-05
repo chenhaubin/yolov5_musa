@@ -5,7 +5,6 @@ from copy import deepcopy
 
 import numpy as np
 import torch
-import torch_musa
 
 from utils.general import LOGGER, colorstr
 from utils.torch_utils import profile

@@ -7,7 +7,6 @@ import sys
 from pathlib import Path
 
 import torch
-import torch_musa
 import yaml
 
 FILE = Path(__file__).resolve()

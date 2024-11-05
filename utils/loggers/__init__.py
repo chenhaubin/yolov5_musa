@@ -8,7 +8,6 @@ from pathlib import Path
 
 import pkg_resources as pkg
 import torch
-import torch_musa
 
 from utils.general import LOGGER, colorstr, cv2
 from utils.loggers.clearml.clearml_utils import ClearmlLogger

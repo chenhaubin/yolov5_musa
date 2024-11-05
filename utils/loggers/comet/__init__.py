@@ -26,7 +26,6 @@ except ImportError:
 
 import PIL
 import torch
-import torch_musa
 import torchvision.transforms as T
 import yaml
 

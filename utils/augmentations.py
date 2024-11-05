@@ -7,7 +7,6 @@ import random
 import cv2
 import numpy as np
 import torch
-import torch_musa
 import torchvision.transforms as T
 import torchvision.transforms.functional as TF
 

@@ -19,7 +19,6 @@ from urllib.parse import urlparse
 import numpy as np
 import psutil
 import torch
-import torch_musa
 import torch.nn.functional as F
 import torchvision
 import yaml

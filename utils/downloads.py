@@ -8,7 +8,7 @@ from pathlib import Path
 
 import requests
 import torch
-import torch_musa
+
 
 def is_url(url, check=True):
     """Determines if a string is a URL and optionally checks its existence online, returning a boolean."""

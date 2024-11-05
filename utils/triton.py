@@ -5,7 +5,7 @@ import typing
 from urllib.parse import urlparse
 
 import torch
-import torch_musa
+
 
 class TritonRemoteModel:
     """

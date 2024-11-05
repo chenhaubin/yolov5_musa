@@ -3,7 +3,6 @@
 import cv2
 import numpy as np
 import torch
-import torch_musa
 import torch.nn.functional as F
 
 

@@ -16,7 +16,6 @@ from copy import deepcopy
 from pathlib import Path
 
 import torch
-import torch_musa
 import torch.nn as nn
 
 FILE = Path(__file__).resolve()
