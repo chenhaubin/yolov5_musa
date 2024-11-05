@@ -24,7 +24,7 @@ try:
     if torch.cuda.is_available():
         from torch.cuda import amp
     else:
-        from torch.musa import amp
+        from torch_musa import amp
 except ImportError:
     raise ImportError("MUSA or CUDA amp module is not available.")
 
