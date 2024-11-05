@@ -48,7 +48,6 @@ from ultralytics.utils.checks import check_requirements
 from utils import TryExcept, emojis
 from utils.downloads import curl_download, gsutil_getsize
 from utils.metrics import box_iou, fitness
-from utils.torch_utils import set_seed
 
 FILE = Path(__file__).resolve()
 ROOT = FILE.parents[1]  # YOLOv5 root directory
@@ -288,7 +287,13 @@ def init_seeds(seed=0, deterministic=False):
     """
     random.seed(seed)
     np.random.seed(seed)
-    set_seed(seed)
+    torch.manual_seed(seed)
+    if torch.musa.is_available():
+        torch.musa.manual_seed(seed)
+        torch.musa.manual_seed_all(seed)
+    elif torch.cuda.is_available():
+        torch.cuda.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)
     # torch.backends.cudnn.benchmark = True  # AutoBatch problem https://github.com/ultralytics/yolov5/issues/9287
     if deterministic and check_version(torch.__version__, "1.12.0"):  # https://github.com/ultralytics/yolov5/pull/8213
         torch.use_deterministic_algorithms(True)
