@@ -2,6 +2,7 @@
 """Loss functions."""
 
 import torch
+import torch_musa
 import torch.nn as nn
 
 from utils.metrics import bbox_iou

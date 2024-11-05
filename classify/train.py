@@ -23,6 +23,7 @@ from datetime import datetime
 from pathlib import Path
 
 import torch
+import torch_musa
 import torch.distributed as dist
 import torch.hub as hub
 import torch.optim.lr_scheduler as lr_scheduler

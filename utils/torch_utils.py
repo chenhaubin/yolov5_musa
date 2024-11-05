@@ -12,6 +12,7 @@ from copy import deepcopy
 from pathlib import Path
 
 import torch
+import torch_musa
 import torch.distributed as dist
 import torch.nn as nn
 import torch.nn.functional as F

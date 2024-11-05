@@ -11,6 +11,7 @@ Usage:
 """
 
 import torch
+import torch_musa
 
 
 def _create(name, pretrained=True, channels=3, classes=80, autoshape=True, verbose=True, device=None):

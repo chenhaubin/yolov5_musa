@@ -58,6 +58,7 @@ from pathlib import Path
 
 import pandas as pd
 import torch
+import torch_musa
 from torch.utils.mobile_optimizer import optimize_for_mobile
 
 FILE = Path(__file__).resolve()

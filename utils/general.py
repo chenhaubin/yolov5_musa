@@ -31,6 +31,7 @@ import numpy as np
 import pandas as pd
 import pkg_resources as pkg
 import torch
+import torch_musa
 import torchvision
 import yaml
 

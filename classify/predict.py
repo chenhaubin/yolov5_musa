@@ -35,6 +35,7 @@ import sys
 from pathlib import Path
 
 import torch
+import torch_musa
 import torch.nn.functional as F
 
 FILE = Path(__file__).resolve()

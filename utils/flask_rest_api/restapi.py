@@ -5,6 +5,7 @@ import argparse
 import io
 
 import torch
+import torch_musa
 from flask import Flask, request
 from PIL import Image
 
