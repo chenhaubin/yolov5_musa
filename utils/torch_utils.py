@@ -130,10 +130,16 @@ def select_device(device="", batch_size=0, newline=True):
     device = str(device).strip().lower().replace("cuda:", "").replace("none", "")  # to string, 'cuda:0' to '0'
     cpu = device == "cpu"
     mps = device == "mps"  # Apple Metal Performance Shaders (MPS)
-    musa = device == 'musa' and MUSA_AVAILABLE  # MUSA (Meta-computing Unified System Architecture) is a computing platform developed by the GPU manufacturer Moore Threads.
+    musa = is_musa_device(device) and MUSA_AVAILABLE  # MUSA (Meta-computing Unified System Architecture) is a computing platform developed by the GPU manufacturer Moore Threads.
     
     if cpu or mps or musa:
         os.environ["CUDA_VISIBLE_DEVICES"] = "-1"  # force torch.cuda.is_available() = False
+    elif musa:  # non-cpu device requested
+        os.environ["CUDA_VISIBLE_DEVICES"] = "-1"  # force torch.cuda.is_available() = False
+        os.environ["MUSA_VISIBLE_DEVICES"] = device  # set environment variable - must be before assert is_available()
+        assert torch.musa.is_available() and torch.musa.device_count() >= len(
+            device.replace(",", "")
+        ), f"Invalid MUSA '--device {device}' requested, use '--device cpu' or pass valid MUSA device(s)"
     elif device:  # non-cpu device requested
         os.environ["CUDA_VISIBLE_DEVICES"] = device  # set environment variable - must be before assert is_available()
         assert torch.cuda.is_available() and torch.cuda.device_count() >= len(
@@ -173,6 +179,23 @@ def select_device(device="", batch_size=0, newline=True):
     LOGGER.info(s)
     return torch.device(arg)
 
+def is_musa_device(device):
+    """
+    Determine whether the entered device string represents a MUSA device.
+
+    :param device: device string, for example, 'musa', 'musa:0', 'musa:0,1,2,4,5,6,7'
+    :return: True for MUSA devices. Otherwise return False
+    """
+    if device is None:
+        return False
+    
+    device_str = str(device).strip().lower()
+    
+    # Check if it starts with 'musa'
+    if device_str.startswith("musa"):
+        return True
+    
+    return False
 
 def init_ddp(backend='nccl'):
     """
@@ -183,23 +206,25 @@ def init_ddp(backend='nccl'):
     else:
         dist.init_process_group(backend="nccl" if dist.is_nccl_available() else "gloo")
 
-def amp_autocast(amp):
+def amp_autocast(enabled):
     """
     Uses autocast for mixed precision based on available devices.
     """
     if MUSA_AVAILABLE:
-        return torch.musa.amp.autocast(enabled=amp)
+        return torch.musa.amp.autocast(enabled)
     else:
-        return torch.cuda.amp.autocast(enabled=amp)
+        return torch.cuda.amp.autocast(enabled)
 
-def grad_scaler(amp):
+def grad_scaler(enabled):
     """
     Returns GradScaler based on the available device.
     """
     if MUSA_AVAILABLE:
-        return torch.musa.amp.GradScaler(enabled=amp)
+        print("-----------------------musa----------------------------------")
+        return torch.musa.amp.GradScaler(enabled)
     else:
-        return torch.cuda.amp.GradScaler(enabled=amp)
+        print("-----------------------cuda----------------------------------")
+        return torch.cuda.amp.GradScaler(enabled)
 
 def set_seed(seed):
     """

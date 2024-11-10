@@ -32,6 +32,12 @@ except ImportError:
 
 import numpy as np
 import torch
+
+try:
+    import torch_musa
+except ImportError:
+    torch_musa = None
+
 import torch_musa
 import torch.distributed as dist
 import torch.nn as nn
@@ -698,7 +704,7 @@ def main(opt, callbacks=Callbacks()):
             assert torch.musa.device_count() > LOCAL_RANK, "insufficient MUSA devices for DDP command"
             torch.musa.set_device(LOCAL_RANK)
             device = torch.device("musa", LOCAL_RANK)
-            dist.init_process_group(backend="mccl" if dist.is_mccl_available() else "gloo", timeout=timedelta(seconds=10800))
+            dist.init_process_group(backend="mccl", timeout=timedelta(seconds=10800))
         else:  # Default to CUDA
             assert torch.cuda.device_count() > LOCAL_RANK, "insufficient CUDA devices for DDP command"
             torch.cuda.set_device(LOCAL_RANK)
